@@ -870,6 +870,7 @@ name = "telegram-capture-bot"
 version = "0.1.0"
 dependencies = [
  "frankenstein",
+ "ureq",
 ]
 
 [[package]]
