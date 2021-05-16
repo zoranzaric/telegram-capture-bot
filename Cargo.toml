@@ -1,0 +1,8 @@
+[package]
+name = "telegram-capture-bot"
+version = "0.1.0"
+authors = ["Zoran Zaric <zz@zoranzaric.de>"]
+edition = "2018"
+
+[dependencies]
+frankenstein = "0.3.1"
