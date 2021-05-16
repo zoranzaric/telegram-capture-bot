@@ -11,6 +11,8 @@ use frankenstein::GetUpdatesParams;
 use frankenstein::SendMessageParams;
 use frankenstein::TelegramApi;
 
+use rusqlite::{Connection, Result};
+
 use metrics_exporter_prometheus::PrometheusBuilder;
 use metrics_util::MetricKindMask;
 
@@ -34,6 +36,19 @@ fn main() {
 
     metrics::register_counter!("messages_received", "The number of messages received.");
 
+    let conn = Connection::open(&"./db.sqlite").expect("Could not open DB");
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS capture (
+                  id              INTEGER PRIMARY KEY,
+                  content            TEXT NOT NULL,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  processed_at TIMESTAMP
+                  )",
+        &[],
+    )
+    .expect("Could not create capture table");
+
     let token = std::env::var("TELEGRAM_BOT_TOKEN").expect("TELEGRAM_BOT_TOKEN not set");
 
     let api = Api::new(token.to_string());
@@ -52,6 +67,8 @@ fn main() {
                     if let Some(message) = update.message() {
                         if let Some(text) = message.text.clone() {
                             metrics::increment_counter!("messages_received", "type" => "text");
+                            conn.execute("INSERT INTO capture (content) VALUES (?1)", &[&text])
+                                .expect("Could not insert capture");
 
                             println!("Text: {}", text);
                         } else if let Some(voice) = message.voice.clone() {
@@ -72,12 +89,13 @@ fn main() {
 
                                         match ureq::get(&url).call() {
                                             Ok(response) => {
+                                                let file_id = voice.file_id;
                                                 let mut reader =
                                                     BufReader::new(response.into_reader());
                                                 let f = OpenOptions::new()
                                                     .write(true)
                                                     .create(true)
-                                                    .open(voice.file_id)
+                                                    .open(file_id)
                                                     .unwrap();
                                                 let mut writer = BufWriter::new(f);
 
@@ -97,6 +115,8 @@ fn main() {
                                     }
                                 }
                             }
+                        } else {
+                            metrics::increment_counter!("messages_received", "type" => "UNHANDLED");
                         }
 
                         let mut send_message_params = SendMessageParams::new(
