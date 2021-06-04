@@ -79,9 +79,18 @@ fn load_captures(conn: &rocket_contrib::databases::rusqlite::Connection) -> Vec<
     .collect::<Vec<_>>()
 }
 
+#[put("/processed/<id>")]
+fn mark_capture_processed(db: DbConn, id: u32) {
+    let mut stmt = db
+        .prepare("UPDATE capture SET processed_at = CURRENT_TIMESTAMP WHERE id = ?")
+        .unwrap();
+
+    stmt.execute(&[&id]).unwrap();
+}
+
 fn main() {
     rocket::ignite()
         .attach(DbConn::fairing())
-        .mount("/", routes![index])
+        .mount("/", routes![index, mark_capture_processed])
         .launch();
 }
