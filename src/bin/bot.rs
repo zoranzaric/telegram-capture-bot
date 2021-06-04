@@ -11,7 +11,7 @@ use frankenstein::GetUpdatesParams;
 use frankenstein::SendMessageParams;
 use frankenstein::TelegramApi;
 
-use rusqlite::{Connection, Result};
+use rusqlite::Connection;
 
 use metrics_exporter_prometheus::PrometheusBuilder;
 use metrics_util::MetricKindMask;
@@ -74,47 +74,8 @@ fn main() {
                         } else if let Some(voice) = message.voice.clone() {
                             metrics::increment_counter!("messages_received", "type" => "voice");
 
-                            let result = api.get_file(&GetFileParams {
-                                file_id: voice.file_id.clone(),
-                            });
-                            if let Ok(response) = result {
-                                println!("get_file response: {:#?}", response);
-
-                                if response.ok {
-                                    if let Some(file_path) = response.result.file_path() {
-                                        let url = format!(
-                                            "https://api.telegram.org/file/bot{}/{}",
-                                            token, file_path
-                                        );
-
-                                        match ureq::get(&url).call() {
-                                            Ok(response) => {
-                                                let file_id = voice.file_id;
-                                                let mut reader =
-                                                    BufReader::new(response.into_reader());
-                                                let f = OpenOptions::new()
-                                                    .write(true)
-                                                    .create(true)
-                                                    .open(file_id)
-                                                    .unwrap();
-                                                let mut writer = BufWriter::new(f);
-
-                                                let mut length = 1;
-
-                                                while length > 0 {
-                                                    let buffer = reader.fill_buf().unwrap();
-
-                                                    writer.write(buffer).unwrap();
-
-                                                    length = buffer.len();
-                                                    reader.consume(length);
-                                                }
-                                            }
-                                            Err(e) => eprintln!("Error: {:#?}", e),
-                                        }
-                                    }
-                                }
-                            }
+                            let file_id = voice.file_id.clone();
+                            download_file(&api, token.clone(), file_id);
                         } else {
                             metrics::increment_counter!("messages_received", "type" => "UNHANDLED");
                         }
@@ -133,6 +94,45 @@ fn main() {
             }
             Err(error) => {
                 println!("Failed to get updates: {:?}", error);
+            }
+        }
+    }
+}
+
+fn download_file(api: &Api, token: String, file_id: String) {
+    let result = api.get_file(&GetFileParams {
+        file_id: file_id.clone(),
+    });
+    if let Ok(response) = result {
+        println!("get_file response: {:#?}", response);
+
+        if response.ok {
+            if let Some(file_path) = response.result.file_path() {
+                let url = format!("https://api.telegram.org/file/bot{}/{}", token, file_path);
+
+                match ureq::get(&url).call() {
+                    Ok(response) => {
+                        let mut reader = BufReader::new(response.into_reader());
+                        let f = OpenOptions::new()
+                            .write(true)
+                            .create(true)
+                            .open(file_id)
+                            .unwrap();
+                        let mut writer = BufWriter::new(f);
+
+                        let mut length = 1;
+
+                        while length > 0 {
+                            let buffer = reader.fill_buf().unwrap();
+
+                            writer.write(buffer).unwrap();
+
+                            length = buffer.len();
+                            reader.consume(length);
+                        }
+                    }
+                    Err(e) => eprintln!("Error: {:#?}", e),
+                }
             }
         }
     }
