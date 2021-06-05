@@ -1,0 +1,30 @@
+* telegram-capture-bot
+
+The [[https://www.meetup.com/de-DE/emacs-ffm/][Emacs Meetup FFM]] plans to build a [[https://telegram.org/][Telegram]] bot and [[https://www.gnu.org/software/emacs/][GNU Emacs]] plugin, that lets one capture ideas or TODOs on the go to [[https://orgmode.org/][Org Mode]].
+This repository contains [[https://en.wikipedia.org/wiki/Spike_(software_development)][spikes]] using diffetent libraries.
+
+There's a branch for each library:
+- [[https://github.com/ayrat555/frankenstein][frankenstein]] ([[https://github.com/zoranzaric/telegram-capture-bot/tree/spike/frankenstein][spike/frankenstein]])
+- [[https://github.com/telegram-rs/telegram-bot][telegram-bot]] ([[https://github.com/zoranzaric/telegram-capture-bot/tree/spike/telegram-bot][spike/telegram-bot]])
+- [[https://github.com/teloxide/teloxide][teloxide]] ([[https://github.com/zoranzaric/telegram-capture-bot/tree/spike/teloxide][spike/teloxide]])
+
+There will also be a HTTP API probably being implemented with [[https://rocket.rs/][Rocket]].
+
+** Building
+#+begin_src sh
+cargo build --release
+#+end_src
+
+** Running
+*** Bot
+First you have to create a Telegram bot (see [[https://core.telegram.org/bots#3-how-do-i-create-a-bot][How do I create a bot?]]).
+
+#+begin_src sh
+export TELEGRAM_BOT_TOKEN=<YOUR_SECRET_BOT_TOKEN>
+cargo run --release --bin bot
+#+end_src
+
+*** API server
+#+begin_src sh
+cargo run --release --bin api-server
+#+end_src
