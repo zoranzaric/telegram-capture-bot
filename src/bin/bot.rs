@@ -45,7 +45,7 @@ fn main() {
                   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   processed_at TIMESTAMP
                   )",
-        &[],
+        [],
     )
     .expect("Could not create capture table");
 

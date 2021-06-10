@@ -1,14 +1,7 @@
-#![feature(proc_macro_hygiene, decl_macro)]
+#[macro_use]
+extern crate rocket;
 
-use std::time::Duration;
-
-use rocket_contrib::json::Json;
-
-use rusqlite::{Connection, Result};
-
-use metrics_exporter_prometheus::PrometheusBuilder;
-use metrics_util::MetricKindMask;
-
+use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -19,78 +12,48 @@ pub(crate) struct Capture {
     processed_at: Option<String>,
 }
 
-#[rocket_contrib::database("main_db")]
-struct DbConn(rocket_contrib::databases::rusqlite::Connection);
-
-fn foo() {
-    tracing_subscriber::fmt::init();
-
-    let listen_address = std::net::SocketAddr::new(
-        std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)),
-        9000,
-    );
-    let builder = PrometheusBuilder::new();
-    builder
-        .listen_address(listen_address)
-        .idle_timeout(
-            MetricKindMask::COUNTER | MetricKindMask::HISTOGRAM,
-            Some(Duration::from_secs(10)),
-        )
-        .install()
-        .expect("failed to install Prometheus recorder");
-    println!("Prometheus exporter listening on {}", listen_address);
-
-    let conn = Connection::open(&"./db.sqlite").expect("Could not open DB");
-
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS capture (
-                  id              INTEGER PRIMARY KEY,
-                  content            TEXT NOT NULL,
-                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                  processed_at TIMESTAMP
-                  )",
-        &[],
-    )
-    .expect("Could not create capture table");
-}
-
-#[macro_use]
-extern crate rocket;
+#[rocket_sync_db_pools::database("main_db")]
+struct DbConn(rocket_sync_db_pools::rusqlite::Connection);
 
 #[get("/")]
-fn index(db: DbConn) -> Json<Vec<Capture>> {
-    Json(load_captures(&*db))
+async fn index(db: DbConn) -> Json<Vec<Capture>> {
+    Json(load_captures(&db).await)
 }
 
-fn load_captures(conn: &rocket_contrib::databases::rusqlite::Connection) -> Vec<Capture> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, content, created_at, processed_at FROM capture WHERE processed_at IS NULL ORDER BY created_at ASC",
-        )
-        .unwrap();
-    stmt.query_map(&[], |row| Capture {
-        id: row.get(0),
-        content: row.get(1),
-        created_at: row.get(2),
-        processed_at: row.get(3),
-    })
-    .unwrap()
-    .map(|r| r.unwrap())
-    .collect::<Vec<_>>()
+async fn load_captures(db: &DbConn) -> Vec<Capture> {
+    db.run(|conn| {
+      let mut stmt = conn
+          .prepare(
+              "SELECT id, content, created_at, processed_at FROM capture WHERE processed_at IS NULL ORDER BY created_at ASC",
+          )
+          .unwrap();
+      stmt.query_map([], |row| Ok(Capture {
+          id: row.get(0).unwrap(),
+          content: row.get(1).unwrap(),
+          created_at: row.get(2).unwrap(),
+          processed_at: row.get(3).unwrap(),
+      }))
+      .unwrap()
+      .map(|r| r.unwrap())
+      .collect::<Vec<_>>()
+    }).await
 }
 
 #[put("/processed/<id>")]
-fn mark_capture_processed(db: DbConn, id: u32) {
-    let mut stmt = db
-        .prepare("UPDATE capture SET processed_at = CURRENT_TIMESTAMP WHERE id = ?")
-        .unwrap();
+async fn mark_capture_processed(db: DbConn, id: u32) {
+    db.run(move |conn| {
+        let mut stmt = conn
+            .prepare("UPDATE capture SET processed_at = CURRENT_TIMESTAMP WHERE id = ?")
+            .unwrap();
 
-    stmt.execute(&[&id]).unwrap();
+        stmt.execute(&[&id]).unwrap();
+    })
+    .await;
 }
 
-fn main() {
-    rocket::ignite()
+#[launch]
+fn rocket() -> _ {
+    rocket::build()
         .attach(DbConn::fairing())
         .mount("/", routes![index, mark_capture_processed])
-        .launch();
 }
